@@ -41,8 +41,12 @@
             <f:select />
         </f:entry>
 
-        <f:entry title="Region" field="regionId">
+        <f:entry title="Region" field="regionId" >
             <f:select />
+        </f:entry>
+
+        <f:entry title="Volume" field="volumeId">
+            <f:textbox />
         </f:entry>
 
         <f:entry title="Run as user" field="username">

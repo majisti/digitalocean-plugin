@@ -26,23 +26,16 @@
 package com.dubture.jenkins.digitalocean;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedMap;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.google.common.base.Strings;
+import com.google.gson.Gson;
 import com.myjeeva.digitalocean.exception.DigitalOceanException;
 import com.myjeeva.digitalocean.exception.RequestUnsuccessfulException;
 import com.myjeeva.digitalocean.impl.DigitalOceanClient;
-import com.myjeeva.digitalocean.pojo.Droplet;
-import com.myjeeva.digitalocean.pojo.Image;
-import com.myjeeva.digitalocean.pojo.Key;
-import com.myjeeva.digitalocean.pojo.Region;
-import com.myjeeva.digitalocean.pojo.Size;
+import com.myjeeva.digitalocean.pojo.*;
 import hudson.Extension;
 import hudson.RelativePath;
 import hudson.Util;
@@ -55,6 +48,8 @@ import hudson.slaves.NodeProperty;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import jenkins.model.Jenkins;
+import org.apache.http.HttpEntity;
+import org.apache.http.entity.StringEntity;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -101,6 +96,11 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
      */
     private final String regionId;
 
+    /**
+     * The optional volumeId attached to the droplet
+     */
+    private final String volumeId;
+
     private final String username;
 
     private final String workspacePath;
@@ -129,6 +129,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
      * @param imageId an image slug e.g. "debian-8-x64", or an integer e.g. of a backup, such as "12345678"
      * @param sizeId the image size e.g. "512mb" or "1gb"
      * @param regionId the region e.g. "nyc1"
+     * @param volumeId the volumeId id
      * @param idleTerminationInMinutes how long to wait before destroying a slave
      * @param numExecutors the number of executors that this slave supports
      * @param labelString the label for this slave
@@ -136,17 +137,18 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
      * @param initScript setup script to configure the slave
      */
     @DataBoundConstructor
-    public SlaveTemplate(String name, String imageId, String sizeId, String regionId, String username, String workspacePath,
+    public SlaveTemplate(String name, String imageId, String sizeId, String regionId, String volumeId, String username, String workspacePath,
                          Integer sshPort, String idleTerminationInMinutes, String numExecutors, String labelString,
                          String instanceCap, String userData, String initScript) {
 
-        LOGGER.log(Level.INFO, "Creating SlaveTemplate with imageId = {0}, sizeId = {1}, regionId = {2}",
-                new Object[] { imageId, sizeId, regionId});
+        LOGGER.log(Level.INFO, "Creating SlaveTemplate with imageId = {0}, sizeId = {1}, regionId = {2}, volumeId = {3}",
+                new Object[] { imageId, sizeId, regionId, volumeId});
 
         this.name = name;
         this.imageId = imageId;
         this.sizeId = sizeId;
         this.regionId = regionId;
+        this.volumeId = volumeId;
         this.username = username;
         this.workspacePath = workspacePath;
         this.sshPort = sshPort;
@@ -214,6 +216,10 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
             droplet.setRegion(new Region(regionId));
             droplet.setImage(DigitalOcean.newImage(imageId));
             droplet.setKeys(newArrayList(new Key(sshKeyId)));
+
+            if (!this.volumeId.isEmpty()) {
+                droplet.setVolumeIds(newArrayList(volumeId));
+            }
 
             if (!(userData == null || userData.trim().isEmpty())) {
                 droplet.setUserData(userData);
@@ -372,6 +378,10 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
             return Cloud.DescriptorImpl.doCheckAuthToken(authToken);
         }
 
+        public FormValidation doCheckVolumeId(@RelativePath("..") @QueryParameter String authToken) {
+            return Cloud.DescriptorImpl.doCheckAuthToken(authToken);
+        }
+
         public ListBoxModel doFillSizeIdItems(@RelativePath("..") @QueryParameter String authToken) throws Exception {
 
             List<Size> availableSizes = DigitalOcean.getAvailableSizes(authToken);
@@ -404,10 +414,10 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 
         public ListBoxModel doFillRegionIdItems(@RelativePath("..") @QueryParameter String authToken) throws Exception {
 
-            List<Region> availableSizes = DigitalOcean.getAvailableRegions(authToken);
+            List<Region> availableRegions = DigitalOcean.getAvailableRegions(authToken);
             ListBoxModel model = new ListBoxModel();
 
-            for (Region region : availableSizes) {
+            for (Region region : availableRegions) {
                 model.add(region.getName(), region.getSlug());
             }
 
@@ -431,6 +441,8 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     public String getRegionId() {
         return regionId;
     }
+
+    public String getVolumeId() { return volumeId; }
 
     public String getLabels() {
         return labels;
